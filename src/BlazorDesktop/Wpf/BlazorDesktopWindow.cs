@@ -45,8 +45,9 @@ public partial class BlazorDesktopWindow : Window
 
     private WindowState _fullscreenStoredState = WindowState.Normal;
     private readonly IServiceProvider _services;
-    private readonly IConfiguration _config;
     private readonly IWebHostEnvironment _environment;
+    private readonly WindowOptions _options;
+    private readonly RootComponentMappingCollection _rootComponents;
     private readonly UISettings _uiSettings;
     private readonly double[] _zoomSizes =
         [5, 4, 3, 2.5, 2, 1.75, 1.5, 1.25, 1.1, 1, 0.9, 0.8, 0.75, 0.66, 0.5, 0.33, 0.25];
@@ -67,18 +68,31 @@ window.addEventListener('DOMContentLoaded', () => {
 ";
 
     /// <summary>
-    /// Creates a <see cref="BlazorDesktopWindow"/> instance.
+    /// Creates a <see cref="BlazorDesktopWindow"/> instance from configuration.
     /// </summary>
     /// <param name="services">The services.</param>
     /// <param name="config">The configuration.</param>
     /// <param name="environment">The hosting environment.</param>
     public BlazorDesktopWindow(IServiceProvider services, IConfiguration config, IWebHostEnvironment environment)
+        : this(services, environment, WindowOptions.FromConfiguration(config), services.GetRequiredService<RootComponentMappingCollection>())
+    {
+    }
+
+    /// <summary>
+    /// Creates a <see cref="BlazorDesktopWindow"/> instance with explicit options and root components.
+    /// </summary>
+    /// <param name="services">The services.</param>
+    /// <param name="environment">The hosting environment.</param>
+    /// <param name="options">The window options.</param>
+    /// <param name="rootComponents">The root component mappings.</param>
+    internal BlazorDesktopWindow(IServiceProvider services, IWebHostEnvironment environment, WindowOptions options, RootComponentMappingCollection rootComponents)
     {
         WebView = new BlazorWebView();
         WebViewBorder = new Border();
         _services = services;
-        _config = config;
         _environment = environment;
+        _options = options;
+        _rootComponents = rootComponents;
         _uiSettings = new UISettings();
 
         InitializeWindow();
@@ -92,12 +106,14 @@ window.addEventListener('DOMContentLoaded', () => {
     /// </summary>
     public void ToggleFullScreen()
     {
+        var useFrame = _options.Frame ?? true;
+
         if (WindowStyle == WindowStyle.SingleBorderWindow)
         {
             IsFullscreen = true;
             _fullscreenStoredState = WindowState;
 
-            UseFrame(_config.GetValue<bool?>(WindowDefaults.Frame) ?? true);
+            UseFrame(useFrame);
             WindowStyle = WindowStyle.None;
 
             if (WindowState == WindowState.Maximized)
@@ -113,7 +129,7 @@ window.addEventListener('DOMContentLoaded', () => {
         {
             IsFullscreen = false;
 
-            UseFrame(_config.GetValue<bool?>(WindowDefaults.Frame) ?? true);
+            UseFrame(useFrame);
             WindowStyle = WindowStyle.SingleBorderWindow;
             WindowState = _fullscreenStoredState;
 
@@ -171,14 +187,14 @@ window.addEventListener('DOMContentLoaded', () => {
 
     private void InitializeWindow()
     {
-        var height = _config.GetValue<int?>(WindowDefaults.Height) ?? 768;
-        var width = _config.GetValue<int?>(WindowDefaults.Width) ?? 1366;
-        var minHeight = _config.GetValue<int?>(WindowDefaults.MinHeight) ?? 0;
-        var minWidth = _config.GetValue<int?>(WindowDefaults.MinWidth) ?? 0;
-        var maxHeight = _config.GetValue<int?>(WindowDefaults.MaxHeight) ?? double.PositiveInfinity;
-        var maxWidth = _config.GetValue<int?>(WindowDefaults.MaxWidth) ?? double.PositiveInfinity;
+        var height = _options.Height ?? 768;
+        var width = _options.Width ?? 1366;
+        var minHeight = _options.MinHeight ?? 0;
+        var minWidth = _options.MinWidth ?? 0;
+        var maxHeight = (double?)_options.MaxHeight ?? double.PositiveInfinity;
+        var maxWidth = (double?)_options.MaxWidth ?? double.PositiveInfinity;
 
-        var useFrame = _config.GetValue<bool?>(WindowDefaults.Frame) ?? true;
+        var useFrame = _options.Frame ?? true;
 
         if (useFrame)
         {
@@ -232,7 +248,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
 
         Name = "BlazorDesktopWindow";
-        Title = _config.GetValue<string?>(WindowDefaults.Title) ?? _environment.ApplicationName;
+        Title = _options.Title ?? _environment.ApplicationName;
         Height = height;
         Width = width;
         MinHeight = minHeight;
@@ -240,8 +256,8 @@ window.addEventListener('DOMContentLoaded', () => {
         MaxHeight = maxHeight;
         MaxWidth = maxWidth;
         UseFrame(useFrame);
-        ResizeMode = (_config.GetValue<bool?>(WindowDefaults.Resizable) ?? true) ? ResizeMode.CanResize : ResizeMode.NoResize;
-        UseIcon(_config.GetValue<string?>(WindowDefaults.Icon) ?? string.Empty);
+        ResizeMode = (_options.Resizable ?? true) ? ResizeMode.CanResize : ResizeMode.NoResize;
+        UseIcon(_options.Icon ?? string.Empty);
         Content = WebViewBorder;
         StateChanged += WindowStateChanged;
         KeyDown += WindowKeyDown;
@@ -261,7 +277,7 @@ window.addEventListener('DOMContentLoaded', () => {
         WebView.HostPage = Path.Combine(_environment.WebRootPath, "index.html");
         WebView.Services = _services;
 
-        foreach (var rootComponent in _services.GetRequiredService<RootComponentMappingCollection>())
+        foreach (var rootComponent in _rootComponents)
         {
             WebView.RootComponents.Add(new()
             {
@@ -305,7 +321,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     private void UpdateWebViewBorderThickness()
     {
-        var useFrame = _config.GetValue<bool?>(WindowDefaults.Frame) ?? true;
+        var useFrame = _options.Frame ?? true;
 
         WebViewBorder.BorderThickness = new Thickness(20, 20, 20, 20);
 

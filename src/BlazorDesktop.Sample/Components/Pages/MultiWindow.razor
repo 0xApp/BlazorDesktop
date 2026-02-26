@@ -1,0 +1,59 @@
+@* Licensed to the .NET Extension Contributors under one or more agreements. *@
+@* The .NET Extension Contributors licenses this file to you under the MIT license. *@
+@* See the LICENSE file in the project root for more information. *@
+
+@page "/multiwindow"
+@using BlazorDesktop.Components
+@using BlazorDesktop.Services
+@inject IWindowManager WindowManager
+
+<h1>Multi-Window Demo</h1>
+
+<p>This page demonstrates opening child windows using both the service-based and component-based APIs.</p>
+
+<h3>Service-based API</h3>
+<p>Open windows programmatically via <code>IWindowManager</code>.</p>
+<button class="btn btn-primary" @onclick="OpenServiceWindow">Open Window (Service)</button>
+
+<hr />
+
+<h3>Component-based API</h3>
+<p>Toggle a window declaratively with the <code>&lt;DesktopWindow&gt;</code> component.</p>
+<button class="btn btn-success" @onclick="ToggleComponentWindow">
+    @(_showComponentWindow ? "Close Window (Component)" : "Open Window (Component)")
+</button>
+
+@if (_showComponentWindow)
+{
+    <DesktopWindow ComponentType="typeof(ChildWindowContent)"
+                   Title="Component Window" Width="500" Height="350"
+                   OnClosed="@(() => { _showComponentWindow = false; InvokeAsync(StateHasChanged); })" />
+}
+
+<hr />
+
+<h3>Open Windows</h3>
+<p>Currently tracking <strong>@WindowManager.Windows.Count</strong> window(s).</p>
+
+@code {
+    private bool _showComponentWindow;
+
+    private async Task OpenServiceWindow()
+    {
+        var handle = await WindowManager.OpenAsync<ChildWindowContent>(options =>
+        {
+            options.Title = "Service Window";
+            options.Width = 500;
+            options.Height = 350;
+        });
+
+        handle.Closed += (_, _) => InvokeAsync(StateHasChanged);
+
+        StateHasChanged();
+    }
+
+    private void ToggleComponentWindow()
+    {
+        _showComponentWindow = !_showComponentWindow;
+    }
+}

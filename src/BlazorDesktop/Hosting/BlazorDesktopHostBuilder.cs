@@ -4,7 +4,6 @@
 
 using System.Windows;
 using BlazorDesktop.Services;
-using BlazorDesktop.Wpf;
 
 namespace BlazorDesktop.Hosting;
 
@@ -123,7 +122,7 @@ public sealed class BlazorDesktopHostBuilder
         Services.AddWpfBlazorWebView();
         Services.AddSingleton<WebViewInstaller>();
         Services.AddSingleton<Application>();
-        Services.AddSingleton<BlazorDesktopWindow>();
+        Services.AddSingleton<IWindowManager, WindowManager>();
         Services.AddHostedService<BlazorDesktopService>();
     }
 

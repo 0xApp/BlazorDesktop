@@ -119,8 +119,8 @@ It is also possible to configure these values through `appsettings.json` like so
 }
 ```
 > [!NOTE]
-> The `Window` object itself is also made available inside of the DI container by injecting `BlazorDesktopWindow`, so you can access all properties on it by using the inject Razor keyword or requesting it through the constructor of a class added as a service.
-> The `BlazorDesktopWindow` inherits from the WPF `Window` class, as such you use WPF apis to manipulate it. WPF documentation for the Window class can be found [here](https://learn.microsoft.com/en-us/dotnet/api/system.windows.window?view=windowsdesktop-9.0).
+> The main window can be accessed through the `IWindowManager` service available in the DI container. Use `IWindowManager.MainWindow` to get a handle to it.
+> The underlying `BlazorDesktopWindow` inherits from the WPF `Window` class, as such you use WPF apis to manipulate it. WPF documentation for the Window class can be found [here](https://learn.microsoft.com/en-us/dotnet/api/system.windows.window?view=windowsdesktop-9.0).
 > Examples of usage can be found below.
 
 ## Custom Window Chrome & Draggable Regions
@@ -153,14 +153,14 @@ Using the base template, if you were to edit `MainLayout.razor` and add a `-webk
 ```
 The top bar becomes draggable, applying the `-webkit-app-region: drag;` property to anything will make it able to be used to drag the window.
 
-In terms of handling things such as the close button, you can inject the Window into any page and interact from it there.
+In terms of handling things such as the close button, you can inject `IWindowManager` into any page and interact with the main window from there.
 
 Here is an example changing `MainLayout.razor`:
 ```razor
-@using BlazorDesktop.Wpf
+@using BlazorDesktop.Services
 
 @inherits LayoutComponentBase
-@inject BlazorDesktopWindow window
+@inject IWindowManager WindowManager
 
 <div class="page">
     <div class="sidebar">
@@ -181,7 +181,7 @@ Here is an example changing `MainLayout.razor`:
 @code {
     void CloseWindow()
     {
-        window.Close();
+        WindowManager.MainWindow.NativeWindow?.Close();
     }
 }
 ```
@@ -190,23 +190,128 @@ To support fullscreen mode, you should also hide your custom window chrome when 
 ## Changing Window Properties During Startup
 It is possible to customize window startup behaviors for Blazor Desktop apps. As an example base setup you could do the following:
 
-Using the base template, if you were to edit `MainLayout.razor` and inject the `BlazorDesktopWindow` you can have the window be maximized on launch using Blazor's `OnInitialized` lifecycle method:
+Using the base template, if you were to edit `MainLayout.razor` and inject `IWindowManager` you can have the window be maximized on launch using Blazor's `OnInitialized` lifecycle method:
 ```razor
-@using BlazorDesktop.Wpf
+@using BlazorDesktop.Services
 @using System.Windows
 @inherits LayoutComponentBase
 
-@inject BlazorDesktopWindow window
+@inject IWindowManager WindowManager
 
 ...
 
 @code {
     protected override void OnInitialized()
     {
-        window.WindowState = WindowState.Maximized;
+        if (WindowManager.MainWindow.NativeWindow is { } window)
+        {
+            window.WindowState = WindowState.Maximized;
+        }
     }
 }
 ```
+
+## Multi-Window Support
+Blazor Desktop supports opening multiple windows, each with its own independent Blazor component tree. There are two ways to create child windows: a **service-based API** for programmatic control and a **component-based API** for declarative Razor usage.
+
+### Service-based API
+Inject `IWindowManager` and call `OpenAsync` to open a new window programmatically:
+
+```razor
+@using BlazorDesktop.Services
+@inject IWindowManager WindowManager
+
+<button @onclick="OpenSettings">Open Settings</button>
+
+@code {
+    private async Task OpenSettings()
+    {
+        var handle = await WindowManager.OpenAsync<SettingsPanel>(options =>
+        {
+            options.Title = "Settings";
+            options.Width = 600;
+            options.Height = 400;
+        });
+
+        // React when the window is closed (user clicks X or closed programmatically)
+        handle.Closed += (sender, args) =>
+        {
+            // Handle cleanup
+        };
+    }
+}
+```
+
+You can also close a window programmatically:
+```csharp
+await WindowManager.CloseAsync(handle);
+```
+
+### Component-based API
+Use the `<DesktopWindow>` component to open and close windows declaratively. The window opens when the component is rendered and closes when it is removed from the render tree:
+
+```razor
+@using BlazorDesktop.Components
+
+<button @onclick="() => showSettings = !showSettings">Toggle Settings</button>
+
+@if (showSettings)
+{
+    <DesktopWindow ComponentType="typeof(SettingsPanel)"
+                   Title="Settings" Width="600" Height="400"
+                   OnClosed="@(() => { showSettings = false; InvokeAsync(StateHasChanged); })" />
+}
+
+@code {
+    private bool showSettings = false;
+}
+```
+
+The `OnClosed` callback fires when the user closes the window (e.g. clicks the X button), allowing you to keep your state in sync.
+
+### Window Options
+Both APIs accept the same set of window options:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `Title` | `string?` | App name | Window title |
+| `Width` | `int?` | `1366` | Window width in pixels |
+| `Height` | `int?` | `768` | Window height in pixels |
+| `MinWidth` | `int?` | `0` | Minimum width |
+| `MinHeight` | `int?` | `0` | Minimum height |
+| `MaxWidth` | `int?` | unlimited | Maximum width |
+| `MaxHeight` | `int?` | unlimited | Maximum height |
+| `Frame` | `bool?` | `true` | Use standard window frame |
+| `Resizable` | `bool?` | `true` | Allow resizing |
+| `Icon` | `string?` | `favicon.ico` | Icon path (relative to `wwwroot`) |
+
+### IWindowManager Reference
+The `IWindowManager` service is available in the DI container and provides:
+
+| Member | Description |
+|--------|-------------|
+| `MainWindow` | Handle to the main application window |
+| `Windows` | List of all currently open window handles |
+| `OpenAsync<TComponent>(...)` | Open a new window with a Blazor component |
+| `OpenAsync(Type, ...)` | Open a new window with a component type |
+| `CloseAsync(handle)` | Close a child window |
+| `WindowOpened` | Event fired when any window is opened |
+| `WindowClosed` | Event fired when any window is closed |
+
+### Behavior Notes
+- **Child window ownership**: All child windows are owned by the main window, so they stack and minimize together following standard WPF behavior.
+- **Shutdown policy**: Closing the main window closes the entire application and all child windows. Closing a child window only removes that window.
+- **DI scoping**: Each window runs its own `BlazorWebView` which creates an independent Blazor DI scope. Scoped services are per-window; singleton services are shared across all windows.
+- **Thread safety**: `IWindowManager` is safe to call from any thread. All WPF operations are automatically marshaled to the UI thread.
+- **Component parameters**: You can pass parameters to child window root components via the `parameters` argument on `OpenAsync` or the `Parameters` property on `<DesktopWindow>`.
+
+### Full Example
+The `BlazorDesktop.Sample` project includes a working multi-window demo. Navigate to the **Multi-Window** page to try both APIs. The sample shows:
+
+- Opening child windows with the service-based API via `IWindowManager.OpenAsync<T>()`
+- Toggling child windows with the component-based API via `<DesktopWindow>`
+- Each child window running its own independent counter
+- Tracking the number of open windows in real time
 
 ## Issues
 Under the hood, Blazor Desktop uses WebView2 which has limitations right now with composition. Due to this, if you disable the window border through the `Window.UseFrame(false)` API, the top edge of the window is unusable as a resizing zone for the window. However all the other corners and edges work.

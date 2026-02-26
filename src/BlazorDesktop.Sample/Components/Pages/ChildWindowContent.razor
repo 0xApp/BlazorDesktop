@@ -1,0 +1,30 @@
+@* Licensed to the .NET Extension Contributors under one or more agreements. *@
+@* The .NET Extension Contributors licenses this file to you under the MIT license. *@
+@* See the LICENSE file in the project root for more information. *@
+
+<div style="padding: 2rem; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
+    <h2>Child Window</h2>
+    <p>This is running in its own window with an independent Blazor component tree.</p>
+
+    <hr />
+
+    <h4>Counter</h4>
+    <p role="status">Current count: @currentCount</p>
+    <button class="btn btn-primary" @onclick="IncrementCount">Click me</button>
+
+    <hr />
+
+    <p style="color: #888; font-size: 0.85rem; margin-top: 1rem;">
+        Window opened at @openedAt.ToString("HH:mm:ss")
+    </p>
+</div>
+
+@code {
+    private int currentCount = 0;
+    private DateTime openedAt = DateTime.Now;
+
+    private void IncrementCount()
+    {
+        currentCount++;
+    }
+}
